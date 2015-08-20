@@ -1,0 +1,178 @@
+<html>
+<head>
+	<link href="c3.min.css" rel="stylesheet" type="text/css">
+	<link rel="stylesheet" href="http://code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+	
+	<script src="d3.min.js" charset="utf-8"></script>
+	<script src="c3.min.js"></script>
+	
+	<script src="jquery-1.10.2.js"></script>
+	<script src="jquery-ui.js"></script>
+	
+	<style>
+		body {
+			font-family: sans-serif;
+		}
+		.tooltip-table {
+			background-color: white;
+			border-collapse: collapse;
+		}
+		.tooltip-table td {
+			border: 1px solid #bbbbbb;
+			font-size: 10px;
+		}
+		.tooltip-title {
+			font-weight: bold;
+			background-color: #bbbbbb;
+			color: white;
+		}
+		label {
+			display: block;
+			padding: 5px;
+		}
+		fieldset {
+			margin: 10px;
+			display: inline;
+		}
+		#slider {
+			margin: 5px;
+		}
+	</style>
+	
+	<script>
+	function calculateAnnualTotal(plan, expenses, copayments) {
+		var total = expenses;
+		if (expenses >= plan.deductible) {
+			total = plan.deductible + (((100.0 - plan.coinsurance) / 100.0) * (expenses - plan.deductible));
+		}
+		total = (total + copayments) >= plan.outOfPocketMax ? plan.outOfPocketMax : (total + copayments);
+		return total + plan.annualPremium
+	}
+	
+	function go() {
+		var medicalExpenses = [];
+		var copayments = 25;
+
+		for (var i = 0; i <= 15000; i += 100) {
+			medicalExpenses.push(i);
+		}
+		
+		var plan1 = {
+			deductible: parseInt($("#plan1deductible").val()),
+			coinsurance: parseInt($("#plan1coinsurance").val()),
+			annualPremium: parseInt($("#plan1premium").val()),
+			outOfPocketMax: parseInt($("#plan1outofpocketmax").val()),
+			annualTotals: []
+		};
+		
+		var plan2 = {
+			deductible: parseInt($("#plan2deductible").val()),
+			coinsurance: parseInt($("#plan2coinsurance").val()),
+			annualPremium: parseInt($("#plan2premium").val()),
+			outOfPocketMax: parseInt($("#plan2outofpocketmax").val()),
+			annualTotals: []
+		};
+		
+		function generateTotals() {
+			plan1.annualTotals = [];
+			plan2.annualTotals = [];
+			for (var i = 0; i < medicalExpenses.length; i++) {
+				plan1.annualTotals.push(calculateAnnualTotal(plan1, medicalExpenses[i], copayments));
+				plan2.annualTotals.push(calculateAnnualTotal(plan2, medicalExpenses[i], copayments));
+			}
+		}
+		generateTotals();
+		
+		function getColumnsArray() {
+			return [
+				['x'].concat(medicalExpenses),
+				[$("#plan1name").val()].concat(plan1.annualTotals),
+				[$("#plan2name").val()].concat(plan2.annualTotals)
+			  ];
+		}
+		
+		var chart = c3.generate({
+			bindto: '#chart',
+			axis: {
+				x: { label: 'Annual Medical Expenses' },
+				y: { label: 'Total You Pay' }
+			},
+			transition: {
+			  duration: 0
+			},
+			tooltip: {
+			  contents: function (d, defaultTitleFormat, defaultValueFormat, color) {
+				return '<table class="tooltip-table">' +
+				'<tr class="tooltip-title"><td colspan="2">$' + d[0].x + ' annual medical expenses</td></tr>' +
+				'<tr><td>with ' + d[0].name + '</td><td><strong>$' + d[0].value + '</strong></td></tr>' +
+				'<tr><td>with ' + d[1].name + '</td><td><strong>$' + d[1].value + '</strong></td></tr>' +
+				'</table>';
+			  }
+			},
+			data: {
+			  x: 'x',
+			  columns: getColumnsArray()
+			}
+		});
+		
+		$("#slider").slider({
+			value: copayments,
+			min: 0,
+			max: 6000,
+			step: 25,
+			slide: function( event, ui ) {
+				$( "#copayments" ).val( "$" + ui.value );
+				copayments = ui.value;
+				generateTotals();
+				chart.load({columns: getColumnsArray()});
+			}});
+		
+		$( "#copayments" ).val( "$" + $( "#slider" ).slider( "value" ) );
+	}
+	
+	document.addEventListener("DOMContentLoaded", function(event) { 
+		go();
+	});
+	</script>
+</head>
+<body>
+<div id="chart"></div>
+	<div style="padding: 10px">
+	<div>Sum of expenses over the year not covered by coinsurance (things like copayments etc):
+	<input type="text" id="copayments" readonly style="border:0; color:#f6931f; font-weight:bold;">
+	</div>
+	
+	<div id="slider"></div>
+</div>
+<fieldset>
+<legend>Plan 1</legend>
+<label>Name <input id="plan1name" value="EPO Standard" /></label>
+<label>Deductible $<input id="plan1deductible" value="1000" /></label>
+<label>Coinsurance <input id="plan1coinsurance" value="100" />%</label>
+<label>Annual Premium $<input id="plan1premium" value="240" /></label>
+<label>Out of Pocket Maximum $<input id="plan1outofpocketmax" value="5080" /></label>
+</fieldset>
+<fieldset>
+<legend>Plan 2</legend>
+<label>Name <input id="plan2name" value="EPO Plus" /></label>
+<label>Deductible $<input id="plan2deductible" value="500" /></label>
+<label>Coinsurance <input id="plan2coinsurance" value="90" />%</label>
+<label>Annual Premium $<input id="plan2premium" value="480" /></label>
+<label>Out of Pocket Maximum $<input id="plan2outofpocketmax" value="1500" /></label>
+</fieldset>
+<button onclick="go()">Go</button>
+<h3>The Calculations</h3>
+<pre>
+IF expenses > deductible
+	sub_total = deductible + (coinsurance * (expenses - deductible)) + copayments
+ELSE
+	sub_total = expenses + copayments
+	
+IF sub_total > out_of_pocket_maximum
+	total = out_of_pocket_maximum + annual_premium
+ELSE
+	total = sub_total + annual_premium
+</pre>
+</table>
+</body>
+</html>
